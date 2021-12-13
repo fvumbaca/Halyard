@@ -31,7 +31,7 @@ func newRootCMD() *cobra.Command {
 func newApplyCMD() *cobra.Command {
 	var k8sOverrides clientcmd.ConfigOverrides
 	cmd := cobra.Command{
-		Use:  "Apply [filenames...]",
+		Use:  "apply [filenames...]",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 

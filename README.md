@@ -10,7 +10,7 @@ simplicity and efficiency.
 ## Install
 
 ```sh
-go install github.com/fvumbaca/halyard
+go install github.com/fvumbaca/halyard@latest
 ```
 
 ## Usage
