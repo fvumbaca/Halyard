@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"io"
 
+	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,7 +16,30 @@ import (
 	"k8s.io/client-go/restmapper"
 )
 
-func Apply(ctx context.Context, cfg *rest.Config, object *unstructured.Unstructured) error {
+func Apply(ctx context.Context, cfg *rest.Config, objects []*unstructured.Unstructured) error {
+	client, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		return err
+	}
+	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
+	if err != nil {
+		return err
+	}
+
+	rm := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(dc))
+	if err != nil {
+		return err
+	}
+	for _, o := range objects {
+		err = createOrUpdateResource(ctx, client, rm, o)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ApplyResource(ctx context.Context, cfg *rest.Config, object *unstructured.Unstructured) error {
 	client, err := dynamic.NewForConfig(cfg)
 	if err != nil {
 		return err
@@ -60,4 +85,16 @@ func createOrUpdateResource(ctx context.Context, client dynamic.Interface, rm *r
 	}
 
 	return err
+}
+
+func Template(out io.Writer, resources []*unstructured.Unstructured) error {
+	o := yaml.NewEncoder(out)
+	o.SetIndent(2)
+	for _, r := range resources {
+		err := o.Encode(&r.Object)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

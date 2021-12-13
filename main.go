@@ -1,9 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -11,49 +11,53 @@ import (
 )
 
 func main() {
-	newRootCMD().Execute()
+	_, err := newRootCMD().ExecuteContextC(context.TODO())
+	if err != nil {
+		fatal(err)
+	}
 }
 
 func newRootCMD() *cobra.Command {
+	cmd := cobra.Command{
+		Use: "halyard",
+	}
+	cmd.AddCommand(
+		newApplyCMD(),
+		newYAMLCMD(),
+	)
+	return &cmd
+}
+
+func newApplyCMD() *cobra.Command {
 	var k8sOverrides clientcmd.ConfigOverrides
 	cmd := cobra.Command{
-		Use:  "halyard [filenames...]",
+		Use:  "Apply [filenames...]",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+
+			configLoader := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+				clientcmd.NewDefaultClientConfigLoadingRules(),
+				&k8sOverrides,
+			)
+
+			config, err := configLoader.ClientConfig()
+			if err != nil {
+				fatal(err)
+			}
+
 			p := newProcessor()
-			for _, filename := range args {
-				f, err := os.Open(filename)
-				if err != nil {
-					fatal(err)
-				}
-				defer f.Close()
-				err = p.ReadResources(f, fileFormat(filepath.Ext(filename)))
-				if err != nil {
-					fatal(err)
-				}
+			err = p.ReadResourceFiles(args)
+			if err != nil {
+				fatal(err)
+			}
 
-				configLoader := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-					clientcmd.NewDefaultClientConfigLoadingRules(),
-					&k8sOverrides,
-				)
-
-				config, err := configLoader.ClientConfig()
-				if err != nil {
-					fatal(err)
-				}
-
-				resources, err := p.RenderResources()
-				if err != nil {
-					fatal(err)
-				}
-
-				for _, u := range resources {
-					err = Apply(cmd.Context(), config, u)
-					if err != nil {
-						fatal(err)
-					}
-				}
-				fmt.Println("Done")
+			resources, err := p.RenderResources()
+			if err != nil {
+				fatal(err)
+			}
+			err = Apply(cmd.Context(), config, resources)
+			if err != nil {
+				fatal(err)
 			}
 			return nil
 		},
@@ -62,6 +66,32 @@ func newRootCMD() *cobra.Command {
 
 	// TODO: Enable namespace overrides
 	// cmd.Flags().StringVarP(&k8sOverrides.Context.Namespace, "namespace", "n", "", "Namespace override")
+	return &cmd
+}
+
+func newYAMLCMD() *cobra.Command {
+	cmd := cobra.Command{
+		Use:  "yaml [filenames...]",
+		Args: cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			p := newProcessor()
+			err := p.ReadResourceFiles(args)
+			if err != nil {
+				fatal(err)
+			}
+
+			resources, err := p.RenderResources()
+			if err != nil {
+				fatal(err)
+			}
+			err = Template(os.Stdout, resources)
+			if err != nil {
+				fatal(err)
+			}
+			return nil
+		},
+	}
+
 	return &cmd
 }
 
